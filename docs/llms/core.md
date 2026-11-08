@@ -136,9 +136,10 @@ seeds a migrated pool at, from the migration's atomic Meme and Quote amounts:
 `floor(sqrt(B / A) * 2^64)`, where B / A is Quote / Meme when Meme is coin A and Meme / Quote
 otherwise. Display decimals never enter it, and the divisor amount must be positive.
 `migration::is_seedable_price` says whether both venues can seed a full-range pool at that price:
-it must lie within half of their shared sqrt-price range (from 2 x 4,295,048,016 to
-79,226,673,515,401,279,992,447,579,055 / 2). A product uses it to refuse a sale that could never
-migrate. Both are pure reads anyone may call.
+it must lie strictly above 2 × 4,295,048,016 and at most 79,226,673,515,401,279,992,447,579,055 / 2.
+The lower endpoint is excluded because that one price's opposite coin order is above the upper
+bound. Checking only one coin order would accept a sale that cannot migrate in the other.
+A product uses it to refuse a sale that could never migrate. Both are pure reads anyone may call.
 
 ### Merkle proofs
 

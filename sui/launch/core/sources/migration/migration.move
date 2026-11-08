@@ -208,10 +208,11 @@ public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: b
 
 /// Whether Cetus and Bluefin can both seed a full-range pool at `sqrt_price_x64`. Both venues
 /// share the same `tick_math` sqrt-price bounds; halving the range keeps the price inside any
-/// full range aligned inward to a tick spacing. The bounds are reciprocal, so either coin order
-/// agrees.
+/// full range aligned inward to a tick spacing. The lower endpoint is exclusive: that one price's
+/// opposite coin order sits above the upper bound, so accepting it would let one order pass while
+/// the other could never migrate.
 public fun is_seedable_price(sqrt_price_x64: u128): bool {
-    sqrt_price_x64 >= constants::min_sqrt_price_x64!() * 2
+    sqrt_price_x64 > constants::min_sqrt_price_x64!() * 2
         && sqrt_price_x64 <= constants::max_sqrt_price_x64!() / 2
 }
 

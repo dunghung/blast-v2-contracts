@@ -332,11 +332,13 @@ fun the_seed_price_rejects_zero_quote_as_coin_a() {
 }
 
 #[test]
-fun a_price_is_seedable_exactly_inside_the_halved_tick_range() {
+fun a_price_is_seedable_strictly_above_the_halved_minimum() {
     let min = 4_295_048_016;
     let max = 79_226_673_515_401_279_992_447_579_055;
 
-    assert!(migration::is_seedable_price(min * 2));
+    // The inclusive minimum's opposite coin order is above `max / 2`.
+    assert!(!migration::is_seedable_price(min * 2));
+    assert!(migration::is_seedable_price(min * 2 + 1));
     assert!(!migration::is_seedable_price(min * 2 - 1));
     assert!(migration::is_seedable_price(max / 2));
     assert!(!migration::is_seedable_price(max / 2 + 1));
@@ -358,6 +360,30 @@ fun seedability_agrees_for_both_coin_orders() {
             migration::is_seedable_price(migration::sqrt_price_x64(amounts[0], amounts[1], false)),
         );
     });
+}
+
+#[test]
+/// 4,611,512,678,433,987,689 meme atoms against 1 quote atom are priced at exactly twice the venue
+/// minimum in one coin order and above half the maximum in the other. Both orders are refused,
+/// and one fewer meme atom is seedable in either order.
+fun the_halved_minimum_price_is_unseedable_in_both_coin_orders() {
+    let meme = 4_611_512_678_433_987_689;
+    let above = 4_611_512_677_360_306_403;
+    let quote = 1;
+    let minimum = 4_295_048_016 * 2;
+
+    assert_eq!(migration::sqrt_price_x64(meme, quote, true), minimum);
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(meme, quote, true)));
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(meme, quote, false)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(above, quote, true)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(above, quote, false)));
+
+    // Swapping the amounts is the same boundary seen from the other order.
+    assert_eq!(migration::sqrt_price_x64(quote, meme, false), minimum);
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(quote, meme, true)));
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(quote, meme, false)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(quote, above, true)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(quote, above, false)));
 }
 
 // === Test Helpers ===

@@ -28,7 +28,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_core` | Shared core | live | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
+| `blast_core` | Shared core | live; source has changed since | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
 | `blast_vault` | LP vault | live | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` |
 | `blast_admin` | Administration | live | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` |
 | `blast_upgrade_cap_manager` | Delayed UpgradeCap manager | live | `0x6a00f462d690add7632ab159280474c3e2176c05e42f3494e37ce451de472958` | `0x6a00f462d690add7632ab159280474c3e2176c05e42f3494e37ce451de472958` |
@@ -4763,7 +4763,7 @@ and those shares keep their pro-rata part of the vault forever.
 
 ## Shared core
 
-> **Deployment status:** `blast_core` is live on mainnet.
+> **Deployment status:** `blast_core` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -4901,9 +4901,10 @@ seeds a migrated pool at, from the migration's atomic Meme and Quote amounts:
 `floor(sqrt(B / A) * 2^64)`, where B / A is Quote / Meme when Meme is coin A and Meme / Quote
 otherwise. Display decimals never enter it, and the divisor amount must be positive.
 `migration::is_seedable_price` says whether both venues can seed a full-range pool at that price:
-it must lie within half of their shared sqrt-price range (from 2 x 4,295,048,016 to
-79,226,673,515,401,279,992,447,579,055 / 2). A product uses it to refuse a sale that could never
-migrate. Both are pure reads anyone may call.
+it must lie strictly above 2 × 4,295,048,016 and at most 79,226,673,515,401,279,992,447,579,055 / 2.
+The lower endpoint is excluded because that one price's opposite coin order is above the upper
+bound. Checking only one coin order would accept a sale that cannot migrate in the other.
+A product uses it to refuse a sale that could never migrate. Both are pure reads anyone may call.
 
 ### Merkle proofs
 
@@ -11395,7 +11396,7 @@ public fun sync(
 
 ## API reference: `blast_core` (Shared core)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -11860,8 +11861,9 @@ public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: b
 
 /// Whether Cetus and Bluefin can both seed a full-range pool at `sqrt_price_x64`. Both venues
 /// share the same `tick_math` sqrt-price bounds; halving the range keeps the price inside any
-/// full range aligned inward to a tick spacing. The bounds are reciprocal, so either coin order
-/// agrees.
+/// full range aligned inward to a tick spacing. The lower endpoint is exclusive: that one price's
+/// opposite coin order sits above the upper bound, so accepting it would let one order pass while
+/// the other could never migrate.
 public fun is_seedable_price(sqrt_price_x64: u128): bool
 ```
 
