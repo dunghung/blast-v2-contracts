@@ -206,21 +206,23 @@ public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: b
     low as u128
 }
 
-/// Whether `sqrt_price_x64` is inside the halved range a full-range Cetus or Bluefin seed uses.
+/// Whether `sqrt_price_x64` is inside the range a full-range Cetus or Bluefin seed uses.
 /// Both venues share the same `tick_math` bounds; halving that range keeps the price inside any
 /// full range aligned inward to a tick spacing. The price must be strictly above twice the venue
-/// minimum and at most half the venue maximum.
+/// minimum. The upper bound is `floor(2^128 / (2 * min + 1))`, the reciprocal of that exclusive
+/// minimum, and it is below half the venue maximum.
 ///
-/// Presale and launch check only the Meme-as-coin-A order. For a positive amount pair the two
-/// orders `P` and `R` satisfy `floor(2^128 / (P + 1)) <= R <= floor(2^128 / P)`. These bounds
-/// satisfy `floor(2^128 / (max / 2 + 1)) = 2 * min` and `floor(2^128 / (2 * min + 1)) <= max / 2`,
-/// so an accepted price has its other order at least twice the minimum and at most half the
-/// maximum. That other order can sit on twice the minimum, which this check rejects, so the
-/// booleans need not match. Excluding the minimum keeps the one-sided check from admitting a
-/// pair whose other order is above half the maximum.
+/// Presale and launch check only the Meme-as-coin-A order. `migrate` does not repeat this check:
+/// it passes the venue's own coin-order price to the pool. For every positive `u64` amount pair
+/// the two orders are on the same side of these bounds, so that one-sided check accepts a pair
+/// only when the other order would pass too. Half the venue maximum is not a tight enough cap:
+/// 1 Meme atom against 4,611,512,677,774,425,882 Quote atoms is still under that half and passes,
+/// while the other order is exactly twice the minimum and fails.
 public fun is_seedable_price(sqrt_price_x64: u128): bool {
-    sqrt_price_x64 > constants::min_sqrt_price_x64!() * 2
-        && sqrt_price_x64 <= constants::max_sqrt_price_x64!() / 2
+    let minimum = constants::min_sqrt_price_x64!() * 2;
+    let maximum = ((1u256 << 128) / ((minimum + 1) as u256)) as u128;
+
+    sqrt_price_x64 > minimum && sqrt_price_x64 <= maximum
 }
 
 // === Test-Only Types ===
