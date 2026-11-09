@@ -206,11 +206,18 @@ public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: b
     low as u128
 }
 
-/// Whether Cetus and Bluefin can both seed a full-range pool at `sqrt_price_x64`. Both venues
-/// share the same `tick_math` sqrt-price bounds; halving the range keeps the price inside any
-/// full range aligned inward to a tick spacing. The lower endpoint is exclusive: that one price's
-/// opposite coin order sits above the upper bound, so accepting it would let one order pass while
-/// the other could never migrate.
+/// Whether `sqrt_price_x64` is inside the halved range a full-range Cetus or Bluefin seed uses.
+/// Both venues share the same `tick_math` bounds; halving that range keeps the price inside any
+/// full range aligned inward to a tick spacing. The price must be strictly above twice the venue
+/// minimum and at most half the venue maximum.
+///
+/// Presale and launch check only the Meme-as-coin-A order. For a positive amount pair the two
+/// orders `P` and `R` satisfy `floor(2^128 / (P + 1)) <= R <= floor(2^128 / P)`. These bounds
+/// satisfy `floor(2^128 / (max / 2 + 1)) = 2 * min` and `floor(2^128 / (2 * min + 1)) <= max / 2`,
+/// so an accepted price has its other order at least twice the minimum and at most half the
+/// maximum. That other order can sit on twice the minimum, which this check rejects, so the
+/// booleans need not match. Excluding the minimum keeps the one-sided check from admitting a
+/// pair whose other order is above half the maximum.
 public fun is_seedable_price(sqrt_price_x64: u128): bool {
     sqrt_price_x64 > constants::min_sqrt_price_x64!() * 2
         && sqrt_price_x64 <= constants::max_sqrt_price_x64!() / 2

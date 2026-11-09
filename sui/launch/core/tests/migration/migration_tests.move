@@ -336,7 +336,8 @@ fun a_price_is_seedable_strictly_above_the_halved_minimum() {
     let min = 4_295_048_016;
     let max = 79_226_673_515_401_279_992_447_579_055;
 
-    // The inclusive minimum's opposite coin order is above `max / 2`.
+    // Twice the minimum is refused so a one-sided check cannot admit a pair whose other order
+    // is above half the maximum. Not every pair at that price has its other order above the bound.
     assert!(!migration::is_seedable_price(min * 2));
     assert!(migration::is_seedable_price(min * 2 + 1));
     assert!(!migration::is_seedable_price(min * 2 - 1));
@@ -347,7 +348,8 @@ fun a_price_is_seedable_strictly_above_the_halved_minimum() {
 }
 
 #[test]
-fun seedability_agrees_for_both_coin_orders() {
+/// Representative pairs whose orders match. The halved-maximum boundary is the pair that does not.
+fun seedability_agrees_for_representative_coin_orders() {
     vector[
         vector[1, 1],
         vector[1, 1_000_000_000],
@@ -364,8 +366,9 @@ fun seedability_agrees_for_both_coin_orders() {
 
 #[test]
 /// 4,611,512,678,433,987,689 meme atoms against 1 quote atom are priced at exactly twice the venue
-/// minimum in one coin order and above half the maximum in the other. Both orders are refused,
-/// and one fewer meme atom is seedable in either order.
+/// minimum in one order and above half the maximum in the other. Both orders are refused.
+/// 4,611,512,677,360,306,403 meme atoms against that 1 quote atom is the last amount at which
+/// both orders pass.
 fun the_halved_minimum_price_is_unseedable_in_both_coin_orders() {
     let meme = 4_611_512_678_433_987_689;
     let above = 4_611_512_677_360_306_403;
@@ -384,6 +387,49 @@ fun the_halved_minimum_price_is_unseedable_in_both_coin_orders() {
     assert!(!migration::is_seedable_price(migration::sqrt_price_x64(quote, meme, false)));
     assert!(migration::is_seedable_price(migration::sqrt_price_x64(quote, above, true)));
     assert!(migration::is_seedable_price(migration::sqrt_price_x64(quote, above, false)));
+}
+
+#[test]
+/// 1 meme atom against 4,611,512,677,774,425,882 quote atoms prices at most half the maximum with
+/// Meme as coin A and at exactly twice the minimum with Meme as coin B. The order presale and
+/// launch check is seedable; the other boolean is not. Both prices stay inside the inclusive
+/// halved range. The previous quote atom passes in both orders, and the next quote atom puts the
+/// high order above half the maximum, so both orders are refused.
+fun the_halved_maximum_boundary_can_disagree_while_both_prices_stay_in_range() {
+    let min = 4_295_048_016 * 2;
+    let max = 79_226_673_515_401_279_992_447_579_055 / 2;
+    let quote = 4_611_512_677_774_425_882;
+    let high = 39_613_336_757_700_639_994_316_420_023;
+
+    assert_eq!(migration::sqrt_price_x64(1, quote, true), high);
+    assert_eq!(migration::sqrt_price_x64(1, quote, false), min);
+    assert!(migration::is_seedable_price(high));
+    assert!(!migration::is_seedable_price(min));
+    assert!(min <= max && high <= max);
+
+    // Swapping the amounts exchanges the orders. Meme as coin A is then the rejected price.
+    assert_eq!(migration::sqrt_price_x64(quote, 1, true), min);
+    assert_eq!(migration::sqrt_price_x64(quote, 1, false), high);
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(quote, 1, true)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(quote, 1, false)));
+
+    let agrees = 4_611_512_677_360_306_403;
+    assert_eq!(migration::sqrt_price_x64(1, agrees, true), 39_613_336_755_921_976_947_483_388_149);
+    assert_eq!(migration::sqrt_price_x64(1, agrees, false), min + 1);
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(1, agrees, true)));
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(1, agrees, false)));
+
+    let first = 4_611_512_677_360_306_404;
+    assert_eq!(migration::sqrt_price_x64(1, first, true), 39_613_336_755_921_976_951_778_436_165);
+    assert_eq!(migration::sqrt_price_x64(1, first, false), min);
+    assert!(migration::is_seedable_price(migration::sqrt_price_x64(1, first, true)));
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(1, first, false)));
+
+    let above = 4_611_512_677_774_425_883;
+    assert_eq!(migration::sqrt_price_x64(1, above, true), 39_613_336_757_700_639_998_611_468_039);
+    assert_eq!(migration::sqrt_price_x64(1, above, false), min);
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(1, above, true)));
+    assert!(!migration::is_seedable_price(migration::sqrt_price_x64(1, above, false)));
 }
 
 // === Test Helpers ===

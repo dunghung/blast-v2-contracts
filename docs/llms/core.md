@@ -135,11 +135,14 @@ read an admission.
 seeds a migrated pool at, from the migration's atomic Meme and Quote amounts:
 `floor(sqrt(B / A) * 2^64)`, where B / A is Quote / Meme when Meme is coin A and Meme / Quote
 otherwise. Display decimals never enter it, and the divisor amount must be positive.
-`migration::is_seedable_price` says whether both venues can seed a full-range pool at that price:
-it must lie strictly above 2 × 4,295,048,016 and at most 79,226,673,515,401,279,992,447,579,055 / 2.
-The lower endpoint is excluded because that one price's opposite coin order is above the upper
-bound. Checking only one coin order would accept a sale that cannot migrate in the other.
-A product uses it to refuse a sale that could never migrate. Both are pure reads anyone may call.
+`migration::is_seedable_price` says whether a sqrt price is inside the halved range a full-range
+seed uses: strictly above 2 × 4,295,048,016 and at most 79,226,673,515,401,279,992,447,579,055 / 2.
+Presale and launch check only the Meme-as-coin-A order. An accepted price's other coin order is
+still at least twice the venue minimum and at most half the maximum. It can sit exactly on twice
+the minimum, which this check rejects, so the two orders are not always the same boolean.
+Excluding that minimum keeps the one-sided check from admitting a pair whose other order is above
+half the maximum. A product uses it to refuse a sale outside that range. Both are pure reads
+anyone may call.
 
 ### Merkle proofs
 
