@@ -10,7 +10,36 @@ test-only seams, because the math functions abort.
 This scratch checkpoint replaces the parked full-range native V2 DEX source
 from [ADR 0076](../docs/decisions/0076-native-v2-and-auto-lp.md). The previous
 scratch source is [retained in Git history](https://github.com/interest-protocol/blast-v2-contracts/tree/45547cf8e795878659b92a316d8ee80c9045d519/scratch-sui/dex).
-Launchpad migration and native pool administration are outside this checkpoint.
+Launchpad migration is outside this checkpoint.
+
+## Package lifecycle
+
+The DEX uses the launch stack's `blast_admin` lifecycle. Publication delivers
+`Publication<BLAST_FUN_DEX>` to the deployer and pins the DEX's `PackageWitness`.
+In a follow-up transaction, `package_admin::wrap` consumes the publication and
+native `UpgradeCap`, seals the cap and `Publisher`, and shares the package admin
+and version. The version starts at 1 with all three pause bits set.
+
+| Bit | Stops |
+| --- | --- |
+| 1 | Pool creation, binding hooks to new pools, finalization and sharing |
+| 2 | Swaps in either direction |
+| 4 | Adding liquidity and donating |
+
+The ACL grants `PauseAdmin<BLAST_FUN_DEX>` for immediate pausing and
+`UnpauseAdmin<BLAST_FUN_DEX>` for release through `blast_fun_dex::unpause`. Release
+checks the current version, supplies the pinned package witness and requires a
+guarded upgrade delay. The liquidity removal sequence stays open under the
+current version with all bits set, including both hook calls and payout.
+Fee-tier and hook configuration remain available during a pause.
+
+`UpgradeAdmin<BLAST_FUN_DEX>` schedules an exact digest under the shared
+upgrade delay, initially 48 hours. The upgrade PTB authorizes the digest,
+executes the native upgrade and calls `commit_upgrade_and_advance` with its
+receipt. The successor compiles the next version. Every DEX mutation that
+depends on the active package takes the same shared `PackageVersion<BLAST_FUN_DEX>`
+by reference. Coordinate hook upgrades that relink DEX calls with the DEX
+cutover so bound hooks can still approve removals.
 
 ## Why the pool is the entry point
 
@@ -28,7 +57,8 @@ pool::finish       needs the bound after-hook's approval and the caller's
                    minimum outputs; unlocks; returns both coins
 ```
 
-Requests and completions have no abilities, so skipping a step aborts the
+Pass the shared DEX package version to each mutating call. Requests and
+completions have no abilities, so skipping a step aborts the
 transaction. Approval and every hook mutation take the pool and check the
 request belongs to it, so a hook bound to several pools cannot be handed
 another pool's request. The pool stays locked from `begin_*` to `finish`, so
@@ -40,11 +70,22 @@ one hook call per bound slot.
 
 ## LP fee tiers
 
-The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The holder of
-the fee-tier admin capability can append a distinct rate from 1 to 100,000 ppm.
+The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The Blast ACL
+root grants `blast_fun_dex_domain::BlastDexFeeTierAdmin` to an operator's
+`AdminCap`. The operator signs in with `blast_acl::sign_in` and passes the
+resulting `AdminWitness` to `lp_fee::schedule_fee_tier` with the shared Sui
+`Clock`. The proposal specifies a distinct rate from 1 to 100,000 ppm and
+returns its deadline. Each rate has its own 48-hour notice and rescheduling
+restarts that rate's notice. The registry holds up to 32 pending rates.
+`CancelAdmin<BLAST_FUN_DEX>` can discard a proposal by rate with
+`lp_fee::cancel_fee_tier`, even once ready. Anyone can call
+`lp_fee::apply_fee_tier` at or after the deadline to admit the rate and emit
+`blast_events::BlastDexFeeTierAdded`. The shared delayed map emits the
+proposal lifecycle keyed by the fee tier registry's ID and `lp_fee::FeeTierKey`.
+
 Anyone can borrow the registry to create a pool with a registered fixed or
-dynamic base rate. Pools store their selected rates at creation. Tier additions
-are recorded as events and apply to future pool creation.
+dynamic base rate. Pools store their selected rates at creation. DEX events
+live in `blast_events`, and DEX abort codes live in `errors`.
 
 ## Hook calling convention
 
@@ -56,14 +97,21 @@ state alone, with no registry, templates or hook-specific code:
 1. Read the pool's `hooks` field: the witness type bound to each slot.
 2. Call the latest version of the witness's original package, in the witness's
    module, at the slot's fixed function name.
-3. Pass the `HookConfig<Witness>` at the address derived from `HookNamespace`
-   and the witness's defining-ID type name, the `Clock`, and empty `hook_data`.
+3. Pass the shared DEX package version, the `HookConfig<Witness>` at the address
+   derived from `HookNamespace` and the witness's defining-ID type name, the
+   `Clock`, and empty `hook_data`.
 
 Hooks gate every function on `HookConfig::version`, which only increases,
 because older package versions stay callable after an upgrade. `hook_data`
 carries bytes from a hook's own service, such as a signed attestation; generic
 routers pass it empty. Hooks needing other objects or per-user arguments add
 separate typed functions for hook-aware callers.
+
+The example hook's `FeeHookAdminCap` holder sets the starting fee at configuration
+creation and uses `fee_hook::schedule_fee_bps` for later changes. Each proposal
+waits 48 hours and remains cancellable by the cap holder through
+`fee_hook::cancel_fee_bps`. Anyone can call `fee_hook::apply_fee_bps` once
+ready. Swaps use the applied fee until that call succeeds.
 
 ## Native LP fees and the curve boundary
 
