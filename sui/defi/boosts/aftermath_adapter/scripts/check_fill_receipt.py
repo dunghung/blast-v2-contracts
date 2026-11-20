@@ -18,7 +18,7 @@ CALLERS = ("fill_orders", "rebalance_orders", "close_orders", "fill_exact_order"
 
 
 def copy_packages(target):
-    for relative in ("sui/defi/boosts/core", "sui/defi/boosts/aftermath_adapter"):
+    for relative in ("sui/governance/admin", "sui/launch/core", "sui/utilities/vesting", "sui/launch/partners", "sui/defi/boosts/core", "sui/defi/boosts/aftermath_adapter"):
         shutil.copytree(
             REPO / relative, target / relative,
             ignore=shutil.ignore_patterns("build", "node_modules", ".git", "__pycache__"),
@@ -55,7 +55,7 @@ def main():
         args.log_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="boosts-a5-") as temporary:
         package = copy_packages(Path(temporary))
-        path = package / "sources/orders.move"
+        path = package / "sources/trading/orders.move"
         source = path.read_text()
         for caller in (None, *CALLERS):
             name = caller or "control"
