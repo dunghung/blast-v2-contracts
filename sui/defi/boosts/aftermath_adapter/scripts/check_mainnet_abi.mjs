@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
+import { AFTERMATH_PACKAGE } from './aftermath.mjs';
 
 const ENDPOINT = 'https://graphql.mainnet.sui.io/graphql';
 const CHAIN_IDENTIFIER = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
@@ -27,13 +28,13 @@ const PACKAGES = [
     {
         label: 'Aftermath perpetuals',
         originalId: '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7',
-        currentId: '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7',
-        version: 1,
-        digest: '2Fa3q1WFk6oNpStaemJFujknbThnnA89GcneuRwAf4vT',
-        previousTransaction: 'EwwGij6nQ1R8zHzSTcSsJXpAh45otaGKQNHqCGTM7tFx',
+        currentId: AFTERMATH_PACKAGE,
+        version: 2,
+        digest: 'P1HVKJzj5VQBMF3DSHtXC82MzxwY86pNPZbT9yXEBqu',
+        previousTransaction: 'eJk8yV9f5p43s41PWVvbgpN7Fm3CX1bMYsYJ6FRRQbf',
         modules: [
             { name: 'account', sha256: 'e94916287e63c4dbd2c8bb8b4939d306834740e50668eaca1ccc4bf3951ec23e', functions: ['create_account', 'consume_policy_and_share_account', 'deposit_collateral', 'withdraw_collateral', 'account_id', 'collateral_balance'] },
-            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_limit_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
+            { name: 'clearing_house', sha256: '6f5ba02e6f0a818ca64a02923c5a66badb17ae35db29149e9a6d8b110dca80a7', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_limit_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
             { name: 'market', sha256: '7b48781611318e2fe87686166925780cd0c73517d0f2a474be9d58761c340985', functions: ['lot_size', 'tick_size', 'scaling_factor', 'base_storage_id', 'collateral_storage_id', 'base_source_id', 'collateral_source_id', 'margin_ratio_initial', 'margin_ratio_maintenance', 'collateral_haircut', 'cum_funding_rates', 'base_oracle_price', 'collateral_oracle_price', 'calculate_mark_price', 'funding_params', 'funding_last_upd_ms', 'is_time_to_update', 'next_funding_update_time', 'taker_fee', 'priority_taker_fee'] },
         ],
     },
@@ -439,6 +440,23 @@ function validateManifestSource(source) {
     equal(recordString(tables.get('addresses')), expectedRecordString({ blast_boosts_aftermath: '0x0' }), `${label}: named address drift`);
 }
 
+// Check the Move compiler's publication bindings as well as the PTB call target.
+function validatePerpetualsPin(manifestSource, publicationSource) {
+    const expected = PACKAGES[0];
+    const manifest = parseToml(manifestSource, 'perpetuals/Move.toml');
+    const published = parseToml(publicationSource, 'perpetuals/Published.toml').get('published.mainnet');
+    equal(manifest.get('package')?.get('published-at'), expected.currentId, 'perpetuals manifest call target');
+    equal(manifest.get('addresses')?.get('perpetuals'), expected.originalId, 'perpetuals named address');
+    equal(published?.get('chain-id'), '35834a8a', 'perpetuals publication chain');
+    equal(published?.get('published-at'), expected.currentId, 'perpetuals published call target');
+    equal(published?.get('original-id'), expected.originalId, 'perpetuals published type origin');
+    equal(published?.get('version'), expected.version, 'perpetuals publication version');
+}
+
+function readPerpetualsFile(name) {
+    return readFileSync(join(PACKAGE_DIR, DIRECT_DEPENDENCIES.perpetuals.local, name), 'utf8');
+}
+
 function validateLockSource(source) {
     const label = 'Move.lock';
     const tables = parseToml(source, label);
@@ -588,12 +606,18 @@ function selfTest() {
     const reject = (name, message, run) => tests.push({ name, run, message });
     accept('checked-in Move.toml', () => validateManifestSource(manifestSource));
     accept('checked-in Move.lock', () => validateLockSource(lockSource));
+    const perpsManifest = readPerpetualsFile('Move.toml');
+    const perpsPublication = readPerpetualsFile('Published.toml');
+    accept('checked-in perpetuals pin', () => validatePerpetualsPin(perpsManifest, perpsPublication));
+    const stalePublication = perpsPublication.replace(expected.currentId, expected.originalId);
+    reject('stale perpetuals publication', `perpetuals published call target\n    expected: ${expected.currentId}\n    actual:   ${expected.originalId}`,
+        () => validatePerpetualsPin(perpsManifest, stalePublication));
     accept('correct chain identifier', () => validateChainData({ chainIdentifier: CHAIN_IDENTIFIER }));
     reject('wrong original package id', `${expected.label}: original package id does not resolve`, () => validatePackageData(expected, { latest: null, pinned: null }));
     const wrongCurrent = goodPackageData(expected); wrongCurrent.latest.address = `0x${'a'.repeat(64)}`;
     reject('wrong current package id', `${expected.label}: current package id drift\n    expected: ${expected.currentId}\n    actual:   0x${'a'.repeat(64)}`, () => validatePackageData(expected, wrongCurrent));
     const wrongVersion = goodPackageData(expected); wrongVersion.latest.version += 1;
-    reject('wrong version', `${expected.label}: package version drift\n    expected: 1\n    actual:   2`, () => validatePackageData(expected, wrongVersion));
+    reject('wrong version', `${expected.label}: package version drift\n    expected: ${expected.version}\n    actual:   ${expected.version + 1}`, () => validatePackageData(expected, wrongVersion));
     const missing = structuredClone(goodModule); missing.package.module.f0 = null;
     reject('missing function', `${expected.label}: fixture::f is missing`, () => validateModuleData(expected, module, missing, true));
     const changed = structuredClone(goodModule); changed.package.module.f0.return[0].signature.body = 'u128';
@@ -657,6 +681,7 @@ async function main() {
     if (args[0] === '--self-test') selfTest();
     validateManifestSource(readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8'));
     validateLockSource(readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8'));
+    validatePerpetualsPin(readPerpetualsFile('Move.toml'), readPerpetualsFile('Published.toml'));
     validateChainData(await graphql('query { chainIdentifier }', {}));
     const observations = [];
     for (const expected of PACKAGES) {
